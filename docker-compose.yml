@@ -1,0 +1,218 @@
+networks:
+  red_net:
+    internal: true
+  blue_net:
+    internal: true
+  model_net:
+    internal: true
+  audit_net:
+    internal: true
+  front:          # Only network that is NOT internal — dashboard publishes port 8080 here
+    internal: false
+
+volumes:
+  red_payloads:
+  blue_rules:
+  ollama_data:
+
+secrets:
+  ed25519_private_pem:
+    file: .secrets/ed25519_private.pem
+  ed25519_public_pem:
+    file: .secrets/ed25519_public.pem
+  hmac_secret:
+    file: .secrets/hmac_secret
+
+# ── Hardening defaults applied to every service ───────────────────────────────
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+    - seccomp:./security/seccomp.json
+  cap_drop:
+    - ALL
+  pids_limit: 50
+  mem_limit: 256m
+  cpus: "0.5"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Services
+# ═════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Audit Service (Phase 1) ────────────────────────────────────────────────
+  audit:
+    build: ./services/audit
+    <<: *hardening
+    networks:
+      - audit_net
+    secrets:
+      - ed25519_private_pem
+    environment:
+      ED25519_PRIVATE_KEY_PATH: /run/secrets/ed25519_private_pem
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        python3 -c
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── LLM Service (Phase 2 & Ollama Profile) ──────────────────────────────────
+  llm:
+    build: ./services/llm
+    <<: *hardening
+    networks:
+      - model_net
+    environment:
+      LLM_BACKEND: ${LLM_BACKEND:-mock}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-smollm:135m}
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        python3 -c
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── Blue Service (Phase 2 / Phase 4) ───────────────────────────────────────
+  blue:
+    build: ./services/blue
+    <<: *hardening
+    networks:
+      - blue_net
+    volumes:
+      - blue_rules:/data/blue_rules:ro
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        python3 -c
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── Gateway Service (Phase 2 / Phase 3) ────────────────────────────────────
+  # The ONLY service attached to every internal network.
+  gateway:
+    build: ./services/gateway
+    <<: *hardening
+    networks:
+      - red_net
+      - blue_net
+      - model_net
+      - audit_net
+    secrets:
+      - ed25519_public_pem
+      - hmac_secret
+    environment:
+      ED25519_PUBLIC_KEY_PATH: /run/secrets/ed25519_public_pem
+      HMAC_SECRET_PATH: /run/secrets/hmac_secret
+      AUDIT_URL: http://audit:8000
+      LLM_URL: http://llm:8000
+      BLUE_URL: http://blue:8000
+      TIMING_BUCKET_SECONDS: "0.2"
+    depends_on:
+      audit:
+        condition: service_healthy
+      llm:
+        condition: service_healthy
+      blue:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        python3 -c
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── Red Attacker Client Service (Phase 3 / Phase 4) ─────────────────────────
+  red:
+    build: ./services/red
+    <<: *hardening
+    networks:
+      - red_net
+    volumes:
+      - red_payloads:/data/red_payloads
+    environment:
+      GATEWAY_URL: http://gateway:8000
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        python3 -c
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── Dashboard Service (Phase 3 / Phase 5) ───────────────────────────────────
+  dashboard:
+    build: ./services/dashboard
+    <<: *hardening
+    networks:
+      - audit_net
+      - front
+    ports:
+      - "8080:8080"
+    environment:
+      AUDIT_URL: http://audit:8000
+    depends_on:
+      audit:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        python3 -c
+        "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── Ollama Profile for Real Model ───────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    networks:
+      - model_net
+    profiles:
+      - ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    networks:
+      - model_net
+    profiles:
+      - ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c", "ollama pull smollm:135m"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
