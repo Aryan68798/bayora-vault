@@ -1,0 +1,55 @@
+{
+  "comment": "Bayora Vault custom seccomp profile. Deny-by-default for privileged/dangerous syscalls; allow everything else Python and FastAPI need.",
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "archMap": [
+    {
+      "architecture": "SCMP_ARCH_X86_64",
+      "subArchitectures": ["SCMP_ARCH_X86", "SCMP_ARCH_X32"]
+    },
+    {
+      "architecture": "SCMP_ARCH_AARCH64",
+      "subArchitectures": ["SCMP_ARCH_ARM"]
+    }
+  ],
+  "syscalls": [
+    {
+      "comment": "Block syscalls that could allow privilege escalation or host escape",
+      "names": [
+        "ptrace",
+        "process_vm_readv",
+        "process_vm_writev",
+        "kexec_load",
+        "kexec_file_load",
+        "open_by_handle_at",
+        "init_module",
+        "finit_module",
+        "delete_module",
+        "iopl",
+        "ioperm",
+        "syslog",
+        "mount",
+        "umount",
+        "umount2",
+        "pivot_root",
+        "chroot",
+        "acct",
+        "settimeofday",
+        "adjtimex",
+        "clock_settime",
+        "reboot",
+        "nfsservctl",
+        "setdomainname",
+        "sethostname",
+        "perf_event_open",
+        "bpf",
+        "userfaultfd",
+        "add_key",
+        "request_key",
+        "keyctl",
+        "unshare",
+        "setns"
+      ],
+      "action": "SCMP_ACT_ERRNO"
+    }
+  ]
+}
