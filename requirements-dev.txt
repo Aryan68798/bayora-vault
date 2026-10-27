@@ -1,0 +1,11 @@
+# Runtime deps (mirrored from each service's requirements.txt)
+fastapi>=0.111
+uvicorn[standard]>=0.29
+httpx>=0.27
+pydantic>=2.7
+cryptography>=42.0
+
+# Test tooling
+pytest>=8.2
+pytest-asyncio>=0.23
+anyio>=4.3
