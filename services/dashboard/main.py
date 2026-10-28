@@ -31,8 +31,23 @@ app.add_middleware(
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-AUDIT_URL = os.environ.get("AUDIT_URL", "http://localhost:8001")
-GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:8000")
+
+
+def _normalize_url(url: str) -> str:
+    url = url.strip().rstrip("/")
+    if url and not url.startswith(("http://", "https://")):
+        return f"https://{url}"
+    return url
+
+
+def _audit_url() -> str:
+    return _normalize_url(os.environ.get("AUDIT_URL", "http://localhost:8001"))
+
+
+def _gateway_url() -> str:
+    return _normalize_url(os.environ.get("GATEWAY_URL", "http://localhost:8000"))
+
+
 PUB_KEY_PATH = Path(os.environ.get("ED25519_PUBLIC_KEY_PATH", str(REPO_ROOT / ".secrets" / "ed25519_public.pem")))
 REPORTS_PATH = REPO_ROOT / "reports" / "breach_results.json"
 INDEX_PATH = Path("/app/index.html")
@@ -112,9 +127,10 @@ def verify_chain_in_memory(entries: list[dict]) -> tuple[bool, Optional[str], Op
 
 async def _fetch_audit_entries() -> list[dict]:
     """Fetch entries from audit service, falling back to local demo export if offline."""
+    audit_base = _audit_url()
     async with httpx.AsyncClient(timeout=3.0) as client:
         try:
-            r = await client.get(f"{AUDIT_URL}/export")
+            r = await client.get(f"{audit_base}/export")
             if r.status_code == 200:
                 data = r.json()
                 return data.get("entries", [])
@@ -150,8 +166,8 @@ async def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "dashboard",
-        "audit_url": AUDIT_URL,
-        "gateway_url": GATEWAY_URL,
+        "audit_url": _audit_url(),
+        "gateway_url": _gateway_url(),
     }
 
 
@@ -217,9 +233,10 @@ async def api_overview():
 async def api_sessions():
     """Return sessions list from gateway or derived from audit log."""
     # Attempt to query gateway
+    gateway_base = _gateway_url()
     async with httpx.AsyncClient(timeout=2.0) as client:
         try:
-            r = await client.get(f"{GATEWAY_URL}/sessions", headers={"x-admin-key": "dev-admin-key"})
+            r = await client.get(f"{gateway_base}/sessions", headers={"x-admin-key": "dev-admin-key"})
             if r.status_code == 200:
                 raw_sessions = r.json().get("sessions", [])
                 formatted = []

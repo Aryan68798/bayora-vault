@@ -1,0 +1,79 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "dashboard": {
+      "root": "services/dashboard",
+      "framework": "fastapi",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "audit",
+          "format": "url",
+          "env": "AUDIT_URL"
+        },
+        {
+          "type": "service",
+          "service": "gateway",
+          "format": "url",
+          "env": "GATEWAY_URL"
+        }
+      ]
+    },
+    "gateway": {
+      "root": "services/gateway",
+      "framework": "fastapi",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "audit",
+          "format": "url",
+          "env": "AUDIT_URL"
+        },
+        {
+          "type": "service",
+          "service": "llm",
+          "format": "url",
+          "env": "LLM_URL"
+        },
+        {
+          "type": "service",
+          "service": "blue",
+          "format": "url",
+          "env": "BLUE_URL"
+        }
+      ]
+    },
+    "red": {
+      "root": "services/red",
+      "framework": "fastapi",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "gateway",
+          "format": "url",
+          "env": "GATEWAY_URL"
+        }
+      ]
+    },
+    "blue": {
+      "root": "services/blue",
+      "framework": "fastapi"
+    },
+    "llm": {
+      "root": "services/llm",
+      "framework": "fastapi"
+    },
+    "audit": {
+      "root": "services/audit",
+      "framework": "fastapi"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "dashboard"
+      }
+    }
+  ]
+}

@@ -63,9 +63,21 @@ _ADMIN_KEY_DEFAULT = "dev-admin-key"
 async def lifespan(app: FastAPI):  # noqa: ANN001
     global _hmac_secret, _sessions, _audit, _llm, _blue, _padder
 
-    secret_path = os.environ.get("HMAC_SECRET_PATH", _HMAC_SECRET_PATH_DEFAULT)
-    with open(secret_path, "rb") as fh:
-        _hmac_secret = fh.read().strip()
+    secret = os.environ.get("HMAC_SECRET")
+    if secret:
+        _hmac_secret = secret.strip().encode()
+    else:
+        from pathlib import Path
+        secret_path = Path(os.environ.get("HMAC_SECRET_PATH", _HMAC_SECRET_PATH_DEFAULT))
+        if not secret_path.exists():
+            repo_secret = Path(__file__).resolve().parent.parent.parent / ".secrets" / "hmac_secret"
+            if repo_secret.exists():
+                secret_path = repo_secret
+        if secret_path.exists():
+            with open(secret_path, "rb") as fh:
+                _hmac_secret = fh.read().strip()
+        else:
+            _hmac_secret = b"dev-fallback-hmac-secret-bayora-vault"
 
     _sessions = SessionStore()
     _audit = AuditClient()

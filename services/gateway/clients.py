@@ -22,6 +22,13 @@ class ClientError(Exception):
     """Raised when a downstream service returns an error or is unreachable."""
 
 
+def _normalize_url(url: str) -> str:
+    url = url.strip().rstrip("/")
+    if url and not url.startswith(("http://", "https://")):
+        return f"https://{url}"
+    return url
+
+
 # ── Audit ─────────────────────────────────────────────────────────────────────
 
 
@@ -29,7 +36,12 @@ class AuditClient:
     """POST events to the audit log service."""
 
     def __init__(self, base_url: str | None = None) -> None:
-        self._base = (base_url or os.environ.get("AUDIT_URL", "http://audit:8000")).rstrip("/")
+        self._override_base = base_url
+
+    @property
+    def _base(self) -> str:
+        raw = self._override_base or os.environ.get("AUDIT_URL", "http://audit:8000")
+        return _normalize_url(raw)
 
     async def log(
         self,
@@ -56,7 +68,12 @@ class LLMClient:
     """Send a prompt to the LLM service and get a text completion."""
 
     def __init__(self, base_url: str | None = None) -> None:
-        self._base = (base_url or os.environ.get("LLM_URL", "http://llm:8000")).rstrip("/")
+        self._override_base = base_url
+
+    @property
+    def _base(self) -> str:
+        raw = self._override_base or os.environ.get("LLM_URL", "http://llm:8000")
+        return _normalize_url(raw)
 
     async def complete(self, session_id: str, prompt: str) -> str:
         """Return the LLM completion string.
@@ -80,7 +97,12 @@ class BlueClient:
     """Send the LLM response to the blue filter service."""
 
     def __init__(self, base_url: str | None = None) -> None:
-        self._base = (base_url or os.environ.get("BLUE_URL", "http://blue:8000")).rstrip("/")
+        self._override_base = base_url
+
+    @property
+    def _base(self) -> str:
+        raw = self._override_base or os.environ.get("BLUE_URL", "http://blue:8000")
+        return _normalize_url(raw)
 
     async def filter(self, session_id: str, llm_response: str) -> dict:
         """POST the LLM response (NOT the original payload) to blue /filter.

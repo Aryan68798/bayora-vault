@@ -17,7 +17,17 @@ from pydantic import BaseModel
 app = FastAPI(title="Bayora Vault — Red Team Client", version="1.0.0")
 
 PAYLOAD_DIR = Path(os.environ.get("RED_PAYLOAD_DIR", "/data/red_payloads"))
-GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://gateway:8000")
+
+
+def _normalize_url(url: str) -> str:
+    url = url.strip().rstrip("/")
+    if url and not url.startswith(("http://", "https://")):
+        return f"https://{url}"
+    return url
+
+
+def _gateway_url() -> str:
+    return _normalize_url(os.environ.get("GATEWAY_URL", "http://gateway:8000"))
 
 
 class AttackPlan(BaseModel):
@@ -37,7 +47,7 @@ async def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "red",
-        "gateway_url": GATEWAY_URL,
+        "gateway_url": _gateway_url(),
         "payload_dir": str(PAYLOAD_DIR),
         "payload_count": payload_count,
     }
@@ -57,10 +67,11 @@ async def commit_and_execute(plan: AttackPlan) -> dict[str, Any]:
         pass
 
     headers = {"Authorization": f"Bearer {plan.token}"}
+    gateway_base = _gateway_url()
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 1: Commit
         commit_resp = await client.post(
-            f"{GATEWAY_URL}/red/commit",
+            f"{gateway_base}/red/commit",
             json={"session_id": plan.session_id, "payload_hash": payload_hash},
             headers=headers,
         )
@@ -72,7 +83,7 @@ async def commit_and_execute(plan: AttackPlan) -> dict[str, Any]:
 
         # Step 2: Attack
         attack_resp = await client.post(
-            f"{GATEWAY_URL}/red/attack",
+            f"{gateway_base}/red/attack",
             json={"session_id": plan.session_id, "payload": plan.payload},
             headers=headers,
         )

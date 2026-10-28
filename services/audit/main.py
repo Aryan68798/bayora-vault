@@ -28,10 +28,23 @@ _KEY_PATH_DEFAULT = "/run/secrets/ed25519_private_pem"
 
 
 def _init_store() -> LogStore:
-    key_path = os.environ.get("ED25519_PRIVATE_KEY_PATH", _KEY_PATH_DEFAULT)
-    with open(key_path, "rb") as fh:
-        private_key = load_pem_private_key(fh.read(), password=None)
-    return LogStore(private_key)
+    pem_env = os.environ.get("ED25519_PRIVATE_KEY")
+    if pem_env:
+        private_key = load_pem_private_key(pem_env.strip().encode(), password=None)
+        return LogStore(private_key)
+    from pathlib import Path
+    key_path = Path(os.environ.get("ED25519_PRIVATE_KEY_PATH", _KEY_PATH_DEFAULT))
+    if not key_path.exists():
+        repo_key = Path(__file__).resolve().parent.parent.parent / ".secrets" / "ed25519_private.pem"
+        if repo_key.exists():
+            key_path = repo_key
+    if key_path.exists():
+        with open(key_path, "rb") as fh:
+            private_key = load_pem_private_key(fh.read(), password=None)
+        return LogStore(private_key)
+    # Generate ephemeral key if no secret mounted so service boots cleanly on serverless platforms
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    return LogStore(ed25519.Ed25519PrivateKey.generate())
 
 
 @asynccontextmanager
