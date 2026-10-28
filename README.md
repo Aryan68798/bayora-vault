@@ -29,7 +29,7 @@ make up          # Launch default services with MockLLM (deterministic latency)
 make up-ollama   # Launch with real open-source model (SmolLM 135M via Ollama profile)
 ```
 
-Access the interactive Web Dashboard at: **[http://localhost:8080](http://localhost:8080)**
+Access the interactive Web Dashboard at: IN-PROGRESS
 
 ---
 
